@@ -40,6 +40,22 @@ public:
     void setPosition(int x, int y);
 };
 
+class Circle : public Shape
+{
+private:
+    int radius_;
+
+public:
+    Circle(int x, int y, int radius);
+
+    void draw(QPainter &painter) const override;
+    bool contains(int x, int y) const override;
+    QRect getBorderRect() const override;
+
+    int getRadius() const;
+    void setRadius(int r);
+};
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
