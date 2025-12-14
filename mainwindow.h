@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include <QPainter>
+#include <vector>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -56,6 +57,30 @@ public:
     void setRadius(int r);
 };
 
+class ShapeContainer
+{
+private:
+    vector<Shape*> shapes_;
+
+public:
+    ShapeContainer();
+    ~ShapeContainer();
+
+    void addShape(Shape *shape);
+    void removeShape(Shape *shape);
+    void clear();
+
+    void clearSelection();
+    void removeSelected();
+    void selectAll();
+
+    Shape* getShape() const;
+    int getCount() const;
+
+    void moveSelected(int dx, int dy);
+    void setSelectedColor(const QColor &color);
+};
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -66,5 +91,6 @@ public:
 
 private:
     Ui::MainWindow *ui;
+    ShapeContainer shapes_;
 };
 #endif // MAINWINDOW_H
