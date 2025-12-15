@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QPainter>
 #include <vector>
+#include <QMessageBox>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -28,7 +29,8 @@ public:
     virtual QRect getBorderRect() const = 0;
 
     virtual void move(int dx, int dy);
-    virtual bool checkBorder(int minX, int minY, int maxX, int maxY) const;
+    virtual bool checkBounds(int left, int top, int right, int bottom) const;
+    virtual bool safeMove(int dx, int dy, int left, int top, int right, int bottom);
 
     bool getSelected() const;
     void setSelected(bool selected);
@@ -75,6 +77,17 @@ public:
     void setSize(int width, int height);
 };
 
+class Square : public Rectangle
+{
+public:
+    Square(int x, int y, int size = 40);
+
+    void setSize(int size);
+
+    void setSide(int size);
+    int getSide() const;
+};
+
 class Triangle : public Shape
 {
 private:
@@ -84,11 +97,11 @@ public:
     Triangle(int x, int y, int size = 40);
 
     void draw(QPainter &painter) const override;
-    void contains(int x, int y) const override;
+    bool contains(int x, int y) const override;
     QRect getBorderRect() const override;
 
     int getSize() const;
-    int setSize(int size);
+    void setSize(int size);
 };
 
 class Line : public Shape
@@ -102,8 +115,12 @@ public:
     Line(int x1, int y1, int x2, int y2, int thickness = 3);
 
     void draw(QPainter &painter) const override;
-    void contains(int x, int y) const override;
+    bool contains(int x, int y) const override;
     QRect getBorderRect() const override;
+
+    bool checkBounds(int left, int top, int right, int bottom) const override;
+    bool safeMove(int dx, int dy, int left, int top, int right, int bottom) override;
+    void move(int dx, int dy) override;
 
     int getX2() const;
     int getY2() const;
@@ -115,27 +132,34 @@ public:
 class ShapeContainer
 {
 private:
-    vector<Shape*> shapes_;
+    std::vector<Shape*> shapes_;
 
 public:
     ShapeContainer();
     ~ShapeContainer();
 
     void addShape(Shape *shape);
-    void removeShape(Shape *shape);
+    void removeShape(int i);
     void clear();
 
     void clearSelection();
     void removeSelected();
     void selectAll();
 
-    Shape* getShape() const;
+    Shape* getShape(int i) const;
     int getCount() const;
 
-    void moveSelected(int dx, int dy);
+    void moveSelected(int dx, int dy, int maxX, int maxY);  // Изменена сигнатура!
     void setSelectedColor(const QColor &color);
 };
 
+enum ShapeType {
+    CIRCLE,
+    RECTANGLE,
+    SQUARE,
+    TRIANGLE,
+    LINE
+};
 
 class MainWindow : public QMainWindow
 {
@@ -145,8 +169,30 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+protected:
+    void paintEvent(QPaintEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
+
+private slots:
+    void selectCircle();
+    void selectRectangle();
+    void selectSquare();
+    void selectTriangle();
+    void selectLine();
+
+    void changeColor();
+
+    void clearWindow();
+
 private:
     Ui::MainWindow *ui;
     ShapeContainer shapes_;
+    ShapeType currentShapeType_ = CIRCLE;
+
+    void createMenu();
+    void createToolBar();
+
+    void updateWindowTitle();
 };
 #endif // MAINWINDOW_H

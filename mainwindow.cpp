@@ -1,12 +1,416 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
+#include <QPainter>
+#include <QMouseEvent>
+#include <QKeyEvent>
+#include <algorithm>
+#include <cmath>
+#include <QMenu>
+#include <QMenuBar>
+#include <QToolBar>
+#include <QAction>
+#include <QColorDialog>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    setWindowTitle("Визуальный редактор - Круг (1)");
+    resize(800, 600);
+    setFocusPolicy(Qt::StrongFocus);
+    createMenu();
+    createToolBar();
+    updateWindowTitle();
 }
+
+void MainWindow::createMenu() {
+    QMenu *fileMenu = menuBar()->addMenu("Файл");
+
+    QAction *clearAction = new QAction("Очистить окно", this);
+    clearAction->setShortcut(QKeySequence::New);
+    connect(clearAction, &QAction::triggered, this, &MainWindow::clearWindow);
+    fileMenu->addAction(clearAction);
+
+    QAction *exitAction = new QAction("Выход", this);
+    exitAction->setShortcut(QKeySequence::Quit);
+    connect(exitAction, &QAction::triggered, this, &QWidget::close);
+    fileMenu->addAction(exitAction);
+
+    QMenu *shapesMenu = menuBar()->addMenu("Фигуры");
+
+    QAction *circleAction = new QAction("Круг", this);
+    circleAction->setShortcut(Qt::Key_1);
+    connect(circleAction, &QAction::triggered, this, &MainWindow::selectCircle);
+    shapesMenu->addAction(circleAction);
+
+    QAction *rectAction = new QAction("Прямоугольник", this);
+    rectAction->setShortcut(Qt::Key_2);
+    connect(rectAction, &QAction::triggered, this, &MainWindow::selectRectangle);
+    shapesMenu->addAction(rectAction);
+
+    QAction *squareAction = new QAction("Квадрат", this);
+    squareAction->setShortcut(Qt::Key_3);
+    connect(squareAction, &QAction::triggered, this, &MainWindow::selectSquare);
+    shapesMenu->addAction(squareAction);
+
+    QAction *triangleAction = new QAction("Треугольник", this);
+    triangleAction->setShortcut(Qt::Key_4);
+    connect(triangleAction, &QAction::triggered, this, &MainWindow::selectTriangle);
+    shapesMenu->addAction(triangleAction);
+
+    QAction *lineAction = new QAction("Линия", this);
+    lineAction->setShortcut(Qt::Key_5);
+    connect(lineAction, &QAction::triggered, this, &MainWindow::selectLine);
+    shapesMenu->addAction(lineAction);
+
+    QMenu *editMenu = menuBar()->addMenu("Правка");
+
+    QAction *deleteAction = new QAction("Удалить", this);
+    deleteAction->setShortcut(QKeySequence::Delete);
+    connect(deleteAction, &QAction::triggered, [this]() {
+        shapes_.removeSelected();
+        update();
+    });
+    editMenu->addAction(deleteAction);
+
+    QAction *selectAllAction = new QAction("Выделить все", this);
+    selectAllAction->setShortcut(QKeySequence::SelectAll);
+    connect(selectAllAction, &QAction::triggered, [this]() {
+        shapes_.selectAll();
+        update();
+    });
+    editMenu->addAction(selectAllAction);
+}
+
+void MainWindow::createToolBar() {
+    QToolBar *toolBar = addToolBar("Инструменты");
+    toolBar->setMovable(false);
+
+    // Текстовые кнопки вместо иконок
+    QAction *circleAction = new QAction("Круг", this);
+    circleAction->setToolTip("Круг - клавиша 1");
+    connect(circleAction, &QAction::triggered, this, &MainWindow::selectCircle);
+    toolBar->addAction(circleAction);
+
+    QAction *rectAction = new QAction("Прямоугольник", this);
+    rectAction->setToolTip("Прямоугольник - клавиша 2");
+    connect(rectAction, &QAction::triggered, this, &MainWindow::selectRectangle);
+    toolBar->addAction(rectAction);
+
+    QAction *squareAction = new QAction("Квадрат", this);
+    squareAction->setToolTip("Квадрат - клавиша 3");
+    connect(squareAction, &QAction::triggered, this, &MainWindow::selectSquare);
+    toolBar->addAction(squareAction);
+
+    QAction *triangleAction = new QAction("Треугольник", this);
+    triangleAction->setToolTip("Треугольник - клавиша 4");
+    connect(triangleAction, &QAction::triggered, this, &MainWindow::selectTriangle);
+    toolBar->addAction(triangleAction);
+
+    QAction *lineAction = new QAction("Линия", this);
+    lineAction->setToolTip("Линия - клавиша 5");
+    connect(lineAction, &QAction::triggered, this, &MainWindow::selectLine);
+    toolBar->addAction(lineAction);
+
+    toolBar->addSeparator();
+
+    QAction *colorAction = new QAction("Цвет", this);
+    colorAction->setToolTip("Изменить цвет выделенных фигур (Ctrl+C)");
+    connect(colorAction, &QAction::triggered, this, &MainWindow::changeColor);
+    toolBar->addAction(colorAction);
+
+    QAction *deleteAction = new QAction("Удалить", this);
+    deleteAction->setToolTip("Удалить выделенные фигуры (Delete)");
+    connect(deleteAction, &QAction::triggered, [this]() {
+        shapes_.removeSelected();
+        update();
+    });
+    toolBar->addAction(deleteAction);
+
+    QAction *clearAction = new QAction("Очистить", this);
+    clearAction->setToolTip("Очистить весь холст");
+    connect(clearAction, &QAction::triggered, this, &MainWindow::clearWindow);
+    toolBar->addAction(clearAction);
+}
+
+void MainWindow::selectCircle() {
+    currentShapeType_ = CIRCLE;
+    updateWindowTitle();
+}
+
+void MainWindow::selectRectangle() {
+    currentShapeType_ = RECTANGLE;
+    updateWindowTitle();
+}
+
+void MainWindow::selectSquare() {
+    currentShapeType_ = SQUARE;
+    updateWindowTitle();
+}
+
+void MainWindow::selectTriangle() {
+    currentShapeType_ = TRIANGLE;
+    updateWindowTitle();
+}
+
+void MainWindow::selectLine() {
+    currentShapeType_ = LINE;
+    updateWindowTitle();
+}
+
+void MainWindow::changeColor() {
+    // Используем стандартный диалог выбора цвета
+    QColorDialog colorDialog(this);
+    colorDialog.setWindowTitle("Выберите цвет");
+    colorDialog.setCurrentColor(Qt::red); // Цвет по умолчанию
+
+    if (colorDialog.exec() == QDialog::Accepted) {
+        QColor color = colorDialog.selectedColor();
+        shapes_.setSelectedColor(color);
+        update();
+    }
+}
+
+void MainWindow::clearWindow() {
+    QMessageBox::StandardButton reply;
+    reply = QMessageBox::question(this, "Очистка холста",
+                                  "Вы уверены, что хотите удалить все фигуры?",
+                                  QMessageBox::Yes | QMessageBox::No);
+
+    if (reply == QMessageBox::Yes) {
+        shapes_.clear();
+        update();
+    }
+}
+
+void MainWindow::updateWindowTitle() {
+    QString shapeName;
+    switch (currentShapeType_) {
+    case CIRCLE: shapeName = "Круг"; break;
+    case RECTANGLE: shapeName = "Прямоугольник"; break;
+    case SQUARE: shapeName = "Квадрат"; break;
+    case TRIANGLE: shapeName = "Треугольник"; break;
+    case LINE: shapeName = "Линия"; break;
+    }
+
+    setWindowTitle("Визуальный редактор - " + shapeName);
+}
+
+void MainWindow::paintEvent(QPaintEvent *event) {
+    Q_UNUSED(event);
+    QPainter painter(this);
+
+    painter.fillRect(rect(), Qt::white);
+
+    for (int i = 0; i < shapes_.getCount(); i++) {
+        Shape* shape = shapes_.getShape(i);
+        if (shape) {
+            shape->draw(painter);
+        }
+    }
+}
+
+void MainWindow::mousePressEvent(QMouseEvent *event)
+{
+    int x = event->pos().x();
+    int y = event->pos().y();
+
+    if (event->button() == Qt::LeftButton) {
+        bool ctrlPressed = event->modifiers() & Qt::ControlModifier;
+
+        Shape* clickedShape = nullptr;
+
+        // Находим фигуру под курсором
+        for (int i = shapes_.getCount() - 1; i >= 0; i--) {
+            Shape* shape = shapes_.getShape(i);
+            if (shape && shape->contains(x, y)) {
+                clickedShape = shape;
+                break;
+            }
+        }
+
+        if (clickedShape) {
+            // Кликнули на существующую фигуру
+            if (ctrlPressed) {
+                clickedShape->setSelected(!clickedShape->getSelected());
+            } else {
+                shapes_.clearSelection();
+                clickedShape->setSelected(true);
+            }
+        } else {
+            // Кликнули на пустое место - создаем новую фигуру
+            if (!ctrlPressed) {
+                shapes_.clearSelection();
+            }
+
+            Shape* newShape = nullptr;
+            int margin = 20; // Минимальный отступ от края
+
+            // Проверяем, чтобы новая фигура помещалась в окно
+            switch (currentShapeType_) {
+            case CIRCLE: {
+                int radius = 20;
+                if (x - radius >= margin && x + radius <= width() - margin &&
+                    y - radius >= margin && y + radius <= height() - margin) {
+                    newShape = new Circle(x, y, radius);
+                } else {
+                    // Фигура не помещается - создаем у края
+                    int safeX = std::max(margin + radius, std::min(x, width() - margin - radius));
+                    int safeY = std::max(margin + radius, std::min(y, height() - margin - radius));
+                    newShape = new Circle(safeX, safeY, radius);
+                }
+                break;
+            }
+
+            case RECTANGLE: {
+                int rectWidth = 50;
+                int rectHeight = 30;
+                int safeX = std::max(margin, std::min(x - rectWidth/2, width() - margin - rectWidth));
+                int safeY = std::max(margin, std::min(y - rectHeight/2, height() - margin - rectHeight));
+                newShape = new Rectangle(safeX, safeY, rectWidth, rectHeight);
+                break;
+            }
+
+            case SQUARE: {
+                int size = 40;
+                int safeX = std::max(margin, std::min(x - size/2, width() - margin - size));
+                int safeY = std::max(margin, std::min(y - size/2, height() - margin - size));
+                newShape = new Square(safeX, safeY, size);
+                break;
+            }
+
+            case TRIANGLE: {
+                int size = 40;
+                int safeX = std::max(margin, std::min(x - size/2, width() - margin - size));
+                int safeY = std::max(margin + size/2, std::min(y, height() - margin - size/2));
+                newShape = new Triangle(safeX, safeY, size);
+                break;
+            }
+
+            case LINE: {
+                int length = 40;
+                int safeX1 = std::max(margin, std::min(x - length/2, width() - margin - length));
+                int safeY1 = std::max(margin, std::min(y, height() - margin));
+                int safeX2 = safeX1 + length;
+                int safeY2 = safeY1;
+                newShape = new Line(safeX1, safeY1, safeX2, safeY2);
+                break;
+            }
+            }
+
+            if (newShape) {
+                if (!ctrlPressed) {
+                    newShape->setSelected(true);
+                }
+                shapes_.addShape(newShape);
+            }
+        }
+
+        update();
+    }
+    else if (event->button() == Qt::RightButton) {
+        shapes_.clearSelection();
+        update();
+    }
+
+    QMainWindow::mousePressEvent(event);
+}
+
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+    bool needUpdate = false;
+    int dx = 0, dy = 0;
+
+    // Определяем направление перемещения
+    switch (event->key()) {
+    case Qt::Key_Delete:
+    case Qt::Key_Backspace:
+        shapes_.removeSelected();
+        needUpdate = true;
+        break;
+
+    case Qt::Key_1:
+        currentShapeType_ = CIRCLE;
+        updateWindowTitle();
+        break;
+
+    case Qt::Key_2:
+        currentShapeType_ = RECTANGLE;
+        updateWindowTitle();
+        break;
+
+    case Qt::Key_3:
+        currentShapeType_ = SQUARE;
+        updateWindowTitle();
+        break;
+
+    case Qt::Key_4:
+        currentShapeType_ = TRIANGLE;
+        updateWindowTitle();
+        break;
+
+    case Qt::Key_5:
+        currentShapeType_ = LINE;
+        updateWindowTitle();
+        break;
+
+    case Qt::Key_Left:
+        dx = -5;
+        break;
+
+    case Qt::Key_Right:
+        dx = 5;
+        break;
+
+    case Qt::Key_Up:
+        dy = -5;
+        break;
+
+    case Qt::Key_Down:
+        dy = 5;
+        break;
+
+    case Qt::Key_Escape:
+        shapes_.clearSelection();
+        needUpdate = true;
+        break;
+
+    case Qt::Key_A:
+        if (event->modifiers() & Qt::ControlModifier) {
+            shapes_.selectAll();
+            needUpdate = true;
+        }
+        break;
+    }
+
+    // Если нужно переместить фигуры
+    if (dx != 0 || dy != 0) {
+        // Получаем границы окна (с отступом)
+        int margin = 10;
+        int left = margin;
+        int top = margin;
+        int right = width() - margin;
+        int bottom = height() - margin;
+
+        // Перемещаем с проверкой границ
+        shapes_.moveSelected(dx, dy, right, bottom);  // передаем только правую и нижнюю границу
+        needUpdate = true;
+    }
+
+    if (needUpdate) {
+        update();
+    }
+
+    QMainWindow::keyPressEvent(event);
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
+}
+
+// ========== Shape ==========
 
 Shape::Shape(int x, int y) : x_(x), y_(y), color_(Qt::red), selected_(false) {}
 
@@ -15,8 +419,25 @@ void Shape::move(int dx, int dy) {
     y_ += dy;
 }
 
-// потом изменить
-bool Shape::checkBorder(int minX, int minY, int maxX, int maxY) const {
+bool Shape::checkBounds(int left, int top, int right, int bottom) const {
+    QRect bounds = getBorderRect();
+    return (bounds.left() >= left &&
+            bounds.top() >= top &&
+            bounds.right() <= right &&
+            bounds.bottom() <= bottom);
+}
+
+bool Shape::safeMove(int dx, int dy, int left, int top, int right, int bottom) {
+    int oldX = x_;
+    int oldY = y_;
+
+    move(dx, dy);
+
+    if (!checkBounds(left, top, right, bottom)) {
+        setPosition(oldX, oldY);
+        return false;
+    }
+
     return true;
 }
 
@@ -49,12 +470,13 @@ void Shape::setPosition(int x, int y) {
     y_ = y;
 }
 
+// ========== Circle ==========
+
 Circle::Circle(int x, int y, int radius) : Shape(x, y), radius_(radius) {}
 
 bool Circle::contains(int x, int y) const {
     int dx = x - x_;
     int dy = y - y_;
-
     return (dx * dx + dy * dy) <= (radius_ * radius_);
 }
 
@@ -83,10 +505,12 @@ void Circle::setRadius(int r) {
     radius_ = r;
 }
 
+// ========== Rectangle ==========
+
 Rectangle::Rectangle(int x, int y, int width, int height) : Shape(x, y), width_(width), height_(height) {}
 
 bool Rectangle::contains(int x, int y) const {
-    return (x >= x_ && x_ <= x + width_ && y >= y_ && y_ <= y + height_);
+    return (x >= x_ && x <= x_ + width_ && y >= y_ && y <= y_ + height_);
 }
 
 void Rectangle::draw(QPainter &painter) const {
@@ -119,31 +543,29 @@ void Rectangle::setSize(int width, int height) {
     height_ = height;
 }
 
+// ========== Square ==========
+
+Square::Square(int x, int y, int size) : Rectangle(x, y, size, size) {}
+
+void Square::setSize(int size) {
+    Rectangle::setSize(size, size);
+}
+
+void Square::setSide(int size) {
+    setSize(size);
+}
+
+int Square::getSide() const {
+    return getWidth();
+}
+
+// ========== Triangle ==========
+
 Triangle::Triangle(int x, int y, int size) : Shape(x, y), size_(size) {}
 
 bool Triangle::contains(int x, int y) const {
-    // Используем ограничивающий прямоугольник с небольшим запасом
-    QRect bounds = getBorderRect();
-
-    // Если точка явно вне прямоугольника - сразу false
-    if (!bounds.contains(x, y)) {
-        return false;
-    }
-
-    // Простая проверка: точка выше нижней трети треугольника
-    int relativeY = y - (y_ - size_/2); // Относительная Y от верха треугольника
-    int triangleHeight = size_;
-
-    // В нижней трети треугольника (где основание) - всегда true
-    if (relativeY > triangleHeight * 2/3) {
-        return true;
-    }
-
-    // В средней и верхней части - проверяем, не слишком ли далеко от центра
-    int centerX = x_ + size_ / 2;
-    int maxWidth = (triangleHeight - relativeY) * size_ / triangleHeight;
-
-    return std::abs(x - centerX) <= maxWidth / 2;
+    QRect bounds = getBorderRect().adjusted(-5, -5, 5, 5);
+    return bounds.contains(x, y);
 }
 
 void Triangle::draw(QPainter &painter) const {
@@ -159,14 +581,14 @@ void Triangle::draw(QPainter &painter) const {
     QPoint points[3] = {
         QPoint(x_, y_ + size_ / 2),
         QPoint(x_ + size_, y_ + size_ / 2),
-        QPoint(x_ + size_ / 2, y_ + size_ / 2)
+        QPoint(x_ + size_ / 2, y_ - size_ / 2)
     };
 
     painter.drawPolygon(points, 3);
 }
 
-void Triangle::getBorderRect() const {
-    return QRect(x_, y_ - size / 2, size_, size_);
+QRect Triangle::getBorderRect() const {
+    return QRect(x_, y_ - size_ / 2, size_, size_);
 }
 
 int Triangle::getSize() const {
@@ -177,10 +599,11 @@ void Triangle::setSize(int size) {
     size_ = size;
 }
 
+// ========== Line ==========
+
 Line::Line(int x1, int y1, int x2, int y2, int thickness) : Shape(x1, y1), x2_(x2), y2_(y2), thickness_(thickness) {}
 
 bool Line::contains(int x, int y) const {
-    // Используем ограничивающий прямоугольник с учетом толщины линии
     int left = std::min(x_, x2_) - thickness_ - 3;
     int top = std::min(y_, y2_) - thickness_ - 3;
     int right = std::max(x_, x2_) + thickness_ + 3;
@@ -200,6 +623,17 @@ void Line::draw(QPainter &painter) const {
     painter.drawLine(x_, y_, x2_, y2_);
 }
 
+bool Line::checkBounds(int left, int top, int right, int bottom) const {
+    QRect bounds = getBorderRect();
+
+    int extra = thickness_ + 2;
+
+    return (bounds.left() + extra >= left &&
+            bounds.right() - extra <= right &&
+            bounds.top() + extra >= top &&
+            bounds.bottom() - extra <= bottom);
+}
+
 QRect Line::getBorderRect() const {
     int left = std::min(x_, x2_);
     int top = std::min(y_, y2_);
@@ -207,6 +641,32 @@ QRect Line::getBorderRect() const {
     int bottom = std::max(y_, y2_);
 
     return QRect(left, top, right - left, bottom - top);
+}
+
+void Line::move(int dx, int dy) {
+    x_ += dx;
+    y_ += dy;
+    x2_ += dx;
+    y2_ += dy;
+}
+
+bool Line::safeMove(int dx, int dy, int left, int top, int right, int bottom) {
+    int oldX1 = x_;
+    int oldY1 = y_;
+    int oldX2 = x2_;
+    int oldY2 = y2_;
+
+    move(dx, dy);
+
+    if (!checkBounds(left, top, right, bottom)) {
+        x_ = oldX1;
+        y_ = oldY1;
+        x2_ = oldX2;
+        y2_ = oldY2;
+        return false;
+    }
+
+    return true;
 }
 
 int Line::getX2() const {
@@ -230,6 +690,8 @@ void Line::setThickness(int thickness) {
     thickness_ = thickness;
 }
 
+// ========== ShapeContainer ==========
+
 ShapeContainer::ShapeContainer() {}
 
 ShapeContainer::~ShapeContainer() {
@@ -241,7 +703,7 @@ void ShapeContainer::addShape(Shape *shape) {
 }
 
 void ShapeContainer::removeShape(int i) {
-    if (i >= 0 && i <= shapes_.size()) {
+    if (i >= 0 && i < (int)shapes_.size()) {
         delete shapes_[i];
         shapes_.erase(shapes_.begin() + i);
     }
@@ -261,10 +723,10 @@ void ShapeContainer::clearSelection() {
 }
 
 void ShapeContainer::removeSelected() {
-    for (int i = shapes_.size() - 1; i >= 0; i--) {
+    for (int i = (int)shapes_.size() - 1; i >= 0; i--) {
         if (shapes_[i]->getSelected()) {
             delete shapes_[i];
-            shapes_.erase(shapes_.begin() + i)
+            shapes_.erase(shapes_.begin() + i);
         }
     }
 }
@@ -276,20 +738,55 @@ void ShapeContainer::selectAll() {
 }
 
 Shape* ShapeContainer::getShape(int i) const {
-    if (i >= 0 && i <= shapes_.size()) {
+    if (i >= 0 && i < (int)shapes_.size()) {
         return shapes_[i];
     }
     return nullptr;
 }
 
 int ShapeContainer::getCount() const {
-    return shapes_.size();
+    return (int)shapes_.size();
 }
 
-void ShapeContainer::moveSelected(int dx, int dy) {
-    for (Shape* shape : shapes_) {
+void ShapeContainer::moveSelected(int dx, int dy, int maxX, int maxY) {
+    // Границы окна
+    int left = 10;
+    int top = 10;
+    int right = maxX - 10;
+    int bottom = maxY - 10;
+
+    // Сначала проверяем, можно ли переместить ВСЕ выделенные фигуры
+    bool canMoveAll = true;
+
+    // Сохраняем текущие позиции всех выделенных фигур
+    std::vector<std::pair<int, int>> originalPositions;
+
+    for (auto* shape : shapes_) {
         if (shape->getSelected()) {
+            // Сохраняем текущую позицию
+            originalPositions.push_back({shape->getX(), shape->getY()});
+
+            // Временно перемещаем для проверки
             shape->move(dx, dy);
+
+            // Проверяем границы
+            if (!shape->checkBounds(left, top, right, bottom)) {
+                canMoveAll = false;
+            }
+
+            // Возвращаем на место
+            shape->move(-dx, -dy);
+        }
+    }
+
+    // Если ВСЕ фигуры могут переместиться - перемещаем их
+    if (canMoveAll) {
+        int posIndex = 0;
+        for (auto* shape : shapes_) {
+            if (shape->getSelected()) {
+                shape->move(dx, dy);
+                posIndex++;
+            }
         }
     }
 }
@@ -300,9 +797,4 @@ void ShapeContainer::setSelectedColor(const QColor &color) {
             shape->setColor(color);
         }
     }
-}
-
-MainWindow::~MainWindow()
-{
-    delete ui;
 }
