@@ -195,5 +195,6 @@ private:
     void updateWindowTitle();
     void resizeSelected(int delta);
     bool canResizeSelected(int delta) const;
+    void applyResize(Shape* shape, int delta);
 };
 #endif // MAINWINDOW_H

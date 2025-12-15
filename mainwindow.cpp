@@ -208,12 +208,10 @@ void MainWindow::clearWindow() {
 
 void MainWindow::increaseSize() {
     resizeSelected(5);
-    update();
 }
 
 void MainWindow::decreaseSize() {
     resizeSelected(-5);
-    update();
 }
 
 void MainWindow::updateWindowTitle() {
@@ -476,62 +474,120 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
     QMainWindow::keyPressEvent(event);
 }
 
-// Изменение размера выделенных фигур
 void MainWindow::resizeSelected(int delta) {
-    // Проверяем, можно ли изменить размер
-    if (!canResizeSelected(delta)) {
-        return;
-    }
+    // Проверяем, не находятся ли выделенные фигуры слишком близко к границе
+    int margin = 3; // Минимальный отступ от края
 
+    bool canResize = true;
+
+    // Сначала проверяем все выделенные фигуры
     for (int i = 0; i < shapes_.getCount(); i++) {
         Shape* shape = shapes_.getShape(i);
         if (shape && shape->getSelected()) {
-            // Используем dynamic_cast для определения типа фигуры
-            if (Circle* circle = dynamic_cast<Circle*>(shape)) {
-                int newRadius = circle->getRadius() + delta;
-                if (newRadius > 5 && newRadius < 100) {  // Ограничения размера
-                    circle->setRadius(newRadius);
+            QRect bounds = shape->getBorderRect();
+
+            if (delta > 0) {
+                // УВЕЛИЧЕНИЕ размера - проверяем, не станет ли фигура слишком большой
+                QRect testBounds = bounds.adjusted(-delta, -delta, delta, delta);
+
+                if (testBounds.left() < margin || testBounds.right() > width() - margin ||
+                    testBounds.top() < margin || testBounds.bottom() > height() - margin) {
+                    canResize = false;
+                    break;
+                }
+            } else {
+                // УМЕНЬШЕНИЕ размера - проверяем только текущие границы
+                // (если фигура уже у границы, уменьшать можно)
+                if (bounds.left() < margin || bounds.right() > width() - margin ||
+                    bounds.top() < margin || bounds.bottom() > height() - margin) {
+                    // Фигура у границы, но уменьшать можно
+                    // Дополнительная проверка: после уменьшения фигура не должна исчезнуть
+                    QRect testBounds = bounds.adjusted(delta, delta, -delta, -delta);
+
+                    // Проверяем минимальный размер
+                    if (testBounds.width() < 10 || testBounds.height() < 10) {
+                        canResize = false;
+                        break;
+                    }
                 }
             }
-            else if (Rectangle* rect = dynamic_cast<Rectangle*>(shape)) {
-                int newWidth = rect->getWidth() + delta;
-                int newHeight = rect->getHeight() + delta;
-                if (newWidth > 10 && newWidth < 200 && newHeight > 10 && newHeight < 200) {
-                    rect->setSize(newWidth, newHeight);
-                }
+        }
+    }
+
+    // Если можно изменить размер - применяем изменения
+    if (canResize) {
+        for (int i = 0; i < shapes_.getCount(); i++) {
+            Shape* shape = shapes_.getShape(i);
+            if (shape && shape->getSelected()) {
+                applyResize(shape, delta);
             }
-            else if (Triangle* triangle = dynamic_cast<Triangle*>(shape)) {
-                int newSize = triangle->getSize() + delta;
-                if (newSize > 10 && newSize < 150) {
-                    triangle->setSize(newSize);
-                }
-            }
-            else if (Line* line = dynamic_cast<Line*>(shape)) {
-                // Для линии изменяем длину
-                int x1 = line->getX();
-                int y1 = line->getY();
-                int x2 = line->getX2();
-                int y2 = line->getY2();
+        }
+        update();
+    }
+}
 
-                // Вычисляем направление линии
-                int dirX = x2 - x1;
-                int dirY = y2 - y1;
-                double length = sqrt(dirX*dirX + dirY*dirY);
+// Применение изменения размера к фигуре
+void MainWindow::applyResize(Shape* shape, int delta) {
+    if (Circle* circle = dynamic_cast<Circle*>(shape)) {
+        int newRadius = circle->getRadius() + delta;
+        // Ограничиваем минимальный и максимальный размер
+        if (newRadius >= 5 && newRadius <= 100) {
+            circle->setRadius(newRadius);
+        }
+    }
+    else if (Rectangle* rect = dynamic_cast<Rectangle*>(shape)) {
+        int newWidth = rect->getWidth() + delta;
+        int newHeight = rect->getHeight() + delta;
+        if (newWidth >= 10 && newWidth <= 200 && newHeight >= 10 && newHeight <= 200) {
+            rect->setSize(newWidth, newHeight);
+        }
+    }
+    else if (Square* square = dynamic_cast<Square*>(shape)) {
+        int newSize = square->getSide() + delta;
+        if (newSize >= 10 && newSize <= 200) {
+            square->setSide(newSize);
+        }
+    }
+    else if (Triangle* triangle = dynamic_cast<Triangle*>(shape)) {
+        int newSize = triangle->getSize() + delta;
+        if (newSize >= 10 && newSize <= 150) {
+            triangle->setSize(newSize);
+        }
+    }
+    else if (Line* line = dynamic_cast<Line*>(shape)) {
+        // Для линии изменяем длину, сохраняя центр
+        int x1 = line->getX();
+        int y1 = line->getY();
+        int x2 = line->getX2();
+        int y2 = line->getY2();
 
-                if (length > 0) {
-                    // Увеличиваем/уменьшаем длину
-                    double scale = (length + delta) / length;
-                    int newX2 = x1 + (int)(dirX * scale);
-                    int newY2 = y1 + (int)(dirY * scale);
+        // Вычисляем центр линии
+        int centerX = (x1 + x2) / 2;
+        int centerY = (y1 + y2) / 2;
 
-                    line->setEndPoint(newX2, newY2);
-                }
+        // Вычисляем текущую длину
+        int dx = x2 - x1;
+        int dy = y2 - y1;
+        double currentLength = sqrt(dx*dx + dy*dy);
+
+        if (currentLength > 0) {
+            // Увеличиваем/уменьшаем длину на delta
+            double newLength = currentLength + delta;
+            if (newLength >= 10 && newLength <= 200) {
+                // Масштабируем вектор от центра
+                double scale = newLength / currentLength;
+                int newX1 = centerX + (int)((x1 - centerX) * scale);
+                int newY1 = centerY + (int)((y1 - centerY) * scale);
+                int newX2 = centerX + (int)((x2 - centerX) * scale);
+                int newY2 = centerY + (int)((y2 - centerY) * scale);
+
+                line->setPosition(newX1, newY1);
+                line->setEndPoint(newX2, newY2);
             }
         }
     }
 }
 
-// Проверка, можно ли изменить размер фигур
 bool MainWindow::canResizeSelected(int delta) const {
     for (int i = 0; i < shapes_.getCount(); i++) {
         Shape* shape = shapes_.getShape(i);
