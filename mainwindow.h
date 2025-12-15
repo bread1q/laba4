@@ -180,10 +180,10 @@ private slots:
     void selectSquare();
     void selectTriangle();
     void selectLine();
-
     void changeColor();
-
     void clearWindow();
+    void increaseSize();
+    void decreaseSize();
 
 private:
     Ui::MainWindow *ui;
@@ -192,7 +192,8 @@ private:
 
     void createMenu();
     void createToolBar();
-
     void updateWindowTitle();
+    void resizeSelected(int delta);
+    bool canResizeSelected(int delta) const;
 };
 #endif // MAINWINDOW_H

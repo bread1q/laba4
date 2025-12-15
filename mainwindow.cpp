@@ -81,6 +81,16 @@ void MainWindow::createMenu() {
         update();
     });
     editMenu->addAction(selectAllAction);
+
+    QAction *increaseSizeAction = new QAction("Увеличить размер", this);
+    increaseSizeAction->setShortcut(Qt::CTRL | Qt::Key_Plus);
+    connect(increaseSizeAction, &QAction::triggered, this, &MainWindow::increaseSize);
+    editMenu->addAction(increaseSizeAction);
+
+    QAction *decreaseSizeAction = new QAction("Уменьшить размер", this);
+    decreaseSizeAction->setShortcut(Qt::CTRL | Qt::Key_Minus);
+    connect(decreaseSizeAction, &QAction::triggered, this, &MainWindow::decreaseSize);
+    editMenu->addAction(decreaseSizeAction);
 }
 
 void MainWindow::createToolBar() {
@@ -132,6 +142,18 @@ void MainWindow::createToolBar() {
     clearAction->setToolTip("Очистить весь холст");
     connect(clearAction, &QAction::triggered, this, &MainWindow::clearWindow);
     toolBar->addAction(clearAction);
+
+    toolBar->addSeparator();
+
+    QAction *increaseAction = new QAction("Увеличить", this);
+    increaseAction->setToolTip("Увеличить размер фигур (Ctrl++)");
+    connect(increaseAction, &QAction::triggered, this, &MainWindow::increaseSize);
+    toolBar->addAction(increaseAction);
+
+    QAction *decreaseAction = new QAction("Уменьшить", this);
+    decreaseAction->setToolTip("Уменьшить размер фигур (Ctrl+-)");
+    connect(decreaseAction, &QAction::triggered, this, &MainWindow::decreaseSize);
+    toolBar->addAction(decreaseAction);
 }
 
 void MainWindow::selectCircle() {
@@ -182,6 +204,16 @@ void MainWindow::clearWindow() {
         shapes_.clear();
         update();
     }
+}
+
+void MainWindow::increaseSize() {
+    resizeSelected(5);
+    update();
+}
+
+void MainWindow::decreaseSize() {
+    resizeSelected(-5);
+    update();
 }
 
 void MainWindow::updateWindowTitle() {
@@ -322,7 +354,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
     bool needUpdate = false;
     int dx = 0, dy = 0;
 
-    // Определяем направление перемещения
+    // Определяем направление перемещения и изменение размера
     switch (event->key()) {
     case Qt::Key_Delete:
     case Qt::Key_Backspace:
@@ -382,20 +414,59 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
             needUpdate = true;
         }
         break;
+
+    // Изменение размера фигур
+    case Qt::Key_Plus:
+    case Qt::Key_Equal:  // На некоторых клавиатурах + на той же клавише, что и =
+        if (event->modifiers() & Qt::ControlModifier) {
+            resizeSelected(5);  // Увеличить на 5 пикселей
+            needUpdate = true;
+        }
+        break;
+
+    case Qt::Key_Minus:
+        if (event->modifiers() & Qt::ControlModifier) {
+            resizeSelected(-5);  // Уменьшить на 5 пикселей
+            needUpdate = true;
+        }
+        break;
     }
 
     // Если нужно переместить фигуры
     if (dx != 0 || dy != 0) {
-        // Получаем границы окна (с отступом)
-        int margin = 10;
-        int left = margin;
-        int top = margin;
-        int right = width() - margin;
-        int bottom = height() - margin;
+        // Получаем границы окна
+        int left = 0;
+        int top = 0;
+        int right = width();
+        int bottom = height();
 
-        // Перемещаем с проверкой границ
-        shapes_.moveSelected(dx, dy, right, bottom);  // передаем только правую и нижнюю границу
-        needUpdate = true;
+        // Проверяем, можно ли переместить ВСЕ выделенные фигуры
+        bool canMoveAll = true;
+
+        // Сначала проверяем все фигуры
+        for (int i = 0; i < shapes_.getCount(); i++) {
+            Shape* shape = shapes_.getShape(i);
+            if (shape && shape->getSelected()) {
+                // Временно перемещаем для проверки
+                shape->move(dx, dy);
+                if (!shape->checkBounds(left, top, right, bottom)) {
+                    canMoveAll = false;
+                }
+                // Возвращаем назад
+                shape->move(-dx, -dy);
+            }
+        }
+
+        // Если ВСЕ фигуры могут переместиться - перемещаем их
+        if (canMoveAll) {
+            for (int i = 0; i < shapes_.getCount(); i++) {
+                Shape* shape = shapes_.getShape(i);
+                if (shape && shape->getSelected()) {
+                    shape->move(dx, dy);
+                }
+            }
+            needUpdate = true;
+        }
     }
 
     if (needUpdate) {
@@ -403,6 +474,91 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
     }
 
     QMainWindow::keyPressEvent(event);
+}
+
+// Изменение размера выделенных фигур
+void MainWindow::resizeSelected(int delta) {
+    // Проверяем, можно ли изменить размер
+    if (!canResizeSelected(delta)) {
+        return;
+    }
+
+    for (int i = 0; i < shapes_.getCount(); i++) {
+        Shape* shape = shapes_.getShape(i);
+        if (shape && shape->getSelected()) {
+            // Используем dynamic_cast для определения типа фигуры
+            if (Circle* circle = dynamic_cast<Circle*>(shape)) {
+                int newRadius = circle->getRadius() + delta;
+                if (newRadius > 5 && newRadius < 100) {  // Ограничения размера
+                    circle->setRadius(newRadius);
+                }
+            }
+            else if (Rectangle* rect = dynamic_cast<Rectangle*>(shape)) {
+                int newWidth = rect->getWidth() + delta;
+                int newHeight = rect->getHeight() + delta;
+                if (newWidth > 10 && newWidth < 200 && newHeight > 10 && newHeight < 200) {
+                    rect->setSize(newWidth, newHeight);
+                }
+            }
+            else if (Triangle* triangle = dynamic_cast<Triangle*>(shape)) {
+                int newSize = triangle->getSize() + delta;
+                if (newSize > 10 && newSize < 150) {
+                    triangle->setSize(newSize);
+                }
+            }
+            else if (Line* line = dynamic_cast<Line*>(shape)) {
+                // Для линии изменяем длину
+                int x1 = line->getX();
+                int y1 = line->getY();
+                int x2 = line->getX2();
+                int y2 = line->getY2();
+
+                // Вычисляем направление линии
+                int dirX = x2 - x1;
+                int dirY = y2 - y1;
+                double length = sqrt(dirX*dirX + dirY*dirY);
+
+                if (length > 0) {
+                    // Увеличиваем/уменьшаем длину
+                    double scale = (length + delta) / length;
+                    int newX2 = x1 + (int)(dirX * scale);
+                    int newY2 = y1 + (int)(dirY * scale);
+
+                    line->setEndPoint(newX2, newY2);
+                }
+            }
+        }
+    }
+}
+
+// Проверка, можно ли изменить размер фигур
+bool MainWindow::canResizeSelected(int delta) const {
+    for (int i = 0; i < shapes_.getCount(); i++) {
+        Shape* shape = shapes_.getShape(i);
+        if (shape && shape->getSelected()) {
+            // Создаем временную копию для проверки
+            if (Circle* circle = dynamic_cast<Circle*>(shape)) {
+                int newRadius = circle->getRadius() + delta;
+                if (newRadius <= 5 || newRadius >= 100) {
+                    return false;
+                }
+            }
+            else if (Rectangle* rect = dynamic_cast<Rectangle*>(shape)) {
+                int newWidth = rect->getWidth() + delta;
+                int newHeight = rect->getHeight() + delta;
+                if (newWidth <= 10 || newWidth >= 200 || newHeight <= 10 || newHeight >= 200) {
+                    return false;
+                }
+            }
+            else if (Triangle* triangle = dynamic_cast<Triangle*>(shape)) {
+                int newSize = triangle->getSize() + delta;
+                if (newSize <= 10 || newSize >= 150) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
 }
 
 MainWindow::~MainWindow()
